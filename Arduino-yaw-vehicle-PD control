@@ -1,0 +1,110 @@
+#define RPWM 12
+#define LPWM 13
+#define R_EN 10
+#define L_EN 11
+
+#define ENC_A 8
+#define ENC_B 9
+
+volatile long encoderCount = 0;
+volatile int lastEncoded = 0;
+
+const float ENCODER_PPR = 2050.0;
+const float WHEEL_RADIUS = 0.065;
+const float GEAR_RATIO = 1.0;
+
+float Kp = 300;
+float Ki = 2;
+float Kd = 0;
+
+float targetVelocity = 0.6;
+
+float integral = 0;
+float lastError = 0;
+unsigned long lastTime = 0;
+long lastEncoderCount = 0;
+
+void readEncoder() {
+  int MSB = digitalRead(ENC_A);
+  int LSB = digitalRead(ENC_B);
+  int encoded = (MSB << 1) | LSB;
+  int sum = (lastEncoded << 2) | encoded;
+
+  if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011)
+    encoderCount++;
+  if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000)
+    encoderCount--;
+
+  lastEncoded = encoded;
+}
+
+ISR(PCINT0_vect) {
+  readEncoder();
+}
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(RPWM, OUTPUT);
+  pinMode(LPWM, OUTPUT);
+  pinMode(R_EN, OUTPUT);
+  pinMode(L_EN, OUTPUT);
+
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+
+  digitalWrite(R_EN, HIGH);
+  digitalWrite(L_EN, HIGH);
+
+  PCICR |= (1 << PCIE0);
+  PCMSK0 |= (1 << PCINT0);
+  PCMSK0 |= (1 << PCINT1);
+
+  lastTime = millis();
+  Serial.println("BT7960 Linear Velocity Control Started");
+}
+
+void loop() {
+  unsigned long now = millis();
+  float dt = (now - lastTime) / 1000.0;
+  if (dt <= 0) dt = 0.001;
+
+  long deltaTicks = encoderCount - lastEncoderCount;
+  lastEncoderCount = encoderCount;
+
+  float omega = (2.0 * PI * deltaTicks) /
+                (ENCODER_PPR * GEAR_RATIO * dt);
+
+  float velocity = omega * WHEEL_RADIUS;
+
+  float error = targetVelocity - velocity;
+  integral += error * dt;
+  integral = constrain(integral, -2.0, 2.0);
+
+  float derivative = (error - lastError) / dt;
+  float output = Kp * error + Ki * integral + Kd * derivative;
+
+  int pwm = constrain(abs(output), 0, 255);
+
+  if (output > 0) {
+    analogWrite(RPWM, pwm);
+    analogWrite(LPWM, 0);
+  } else {
+    analogWrite(RPWM, 0);
+    analogWrite(LPWM, pwm);
+  }
+
+  lastError = error;
+  lastTime = now;
+
+  static unsigned long lastPrint = 0;
+  if (now - lastPrint > 200) {
+    Serial.print("Velocity: ");
+    Serial.print(velocity, 3);
+    Serial.print(" m/s | Target: ");
+    Serial.print(targetVelocity);
+    Serial.print(" m/s | PWM: ");
+    Serial.println(pwm);
+    lastPrint = now;
+  }
+}
