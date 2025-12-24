@@ -2,7 +2,29 @@
 
 Arduino-based vehicle control system that tracks a desired heading (yaw) and longitudinal velocity using an MPU6050 IMU, quadrature encoders, and the bicycle kinematic model. Implements PID-controlled steering and drive motors for autonomous motion.
 
-![Vehicle control diagram](https://via.placeholder.com/600x200?text=Schematic+or+Photo+Optional) <!-- Optional: replace with real image later -->
+![Vehicle control diagram]
+       +---------------------+
+       |    Arduino Uno      |
+       +----------+----------+
+                  |
+        +---------v---------+
+        | MPU6050 IMU (yaw) |
+        +---------+---------+
+                  |
+        +---------v---------+
+        | Bicycle Model     |
+        | ψ̇ = (v/L)·tan(δ)  |
+        +---------+---------+
+                  |
+        +---------v---------+     +------------------+
+        | Yaw PD Controller | --> | Steering Motor   |
+        | δ_cmd = f(ψ_error)|     | (BT7960 + Encoder)|
+        +---------+---------+     +---------+--------+
+                  |                         |
+        +---------v---------+     +---------v--------+
+        | Velocity P Ctrl   | --> | Drive Motor      |
+        | v_cmd = f(v_error)|     | (BT7960 + Encoder)|
+        +-------------------+     +------------------+
 
 ---
 
